@@ -103,7 +103,16 @@ tr.hi td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
 .verdict{font:700 20px/1.2 var(--display);letter-spacing:.02em;text-transform:uppercase}
 .verdict.good{color:var(--good)} .verdict.bad{color:var(--bad)} .verdict.mut{color:var(--muted)}
 .empty{padding:28px;text-align:center;color:var(--muted)}
-@media (max-width:640px){.controls{margin-left:0;width:100%}.vs .side .v{font-size:34px}}
+@media (max-width:640px){
+  .controls{margin-left:0;width:100%}
+  .vs .side .v{font-size:34px}
+  .strip{grid-template-columns:1fr 1fr;gap:8px}
+  .stat{padding:10px 12px}
+  .stat .v{font-size:24px}
+  .stat .s{font-size:12px}
+  header.bar .wrap{padding-block:8px;gap:8px 12px}
+  input#user{width:120px}
+}
 @media (prefers-reduced-motion:no-preference){.meter i{transition:width .4s ease}}
 </style>
 </head>
