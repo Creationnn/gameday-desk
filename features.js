@@ -137,7 +137,7 @@ function tradeIdeasHtml(){
   const val = ids => lineupTotal(bestLineup(ids, S.slots, S.players, rate), rate);
   const active = t => t.players.filter(id=>!t.reserve.includes(id));
   const mine = active(S.me), base = val(mine);
-  const useful = ids => ids.filter(id=>rate(id) >= 3);
+  const useful = ids => ids.filter(id=>rate(id) >= 4).sort((a,b)=>rate(b)-rate(a)).slice(0,14);
   const ideas = [];
   for(const t of S.teams){
     if(t===S.me) continue;
@@ -153,6 +153,16 @@ function tradeIdeasHtml(){
     for(let i=0;i<A.length;i++) for(let j=i+1;j<A.length;j++) for(const b of B) tryDeal([A[i],A[j]],[b]);
     for(const a of A) for(let i=0;i<B.length;i++) for(let j=i+1;j<B.length;j++) tryDeal([a],[B[i],B[j]]);
   }
+  // Drop two-for-ones where the extra player adds nothing over the matching one-for-one.
+  const key = d => d.t.rid + "|" + [...d.give].sort() + "|" + [...d.get].sort();
+  const byKey = new Map(ideas.map(d=>[key(d), d]));
+  const redundant = d => {
+    const subs = [];
+    if(d.give.length===2) d.give.forEach(x=>subs.push({t:d.t, give:d.give.filter(y=>y!==x), get:d.get}));
+    if(d.get.length===2) d.get.forEach(x=>subs.push({t:d.t, give:d.give, get:d.get.filter(y=>y!==x)}));
+    return subs.some(sd=>{ const o = byKey.get(key(sd)); return o && o.dMe >= d.dMe-0.3 && o.dTh >= d.dTh-0.3; });
+  };
+  for(let i=ideas.length-1;i>=0;i--) if(redundant(ideas[i])) ideas.splice(i,1);
   ideas.sort((x,y)=>y.score-x.score);
   const perTeam = new Map(), top = [];
   for(const d of ideas){ const n = perTeam.get(d.t)||0; if(n<2){ top.push(d); perTeam.set(d.t,n+1); } if(top.length>=8) break; }
