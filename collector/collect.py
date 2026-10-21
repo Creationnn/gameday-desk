@@ -444,12 +444,19 @@ def usage_table(S: Season, upto_week: int, n: int = 4) -> dict:
         by[r["player_id"]][r["_w"]] = r
         meta[r["player_id"]] = (r.get("player_display_name") or "", r["_pos"], r["_team"])
     weeks = [w for w in S.weeks_played if w < upto_week][-n:]
+    # Each team's running-back opportunities (carries + targets) per week, for backfield share.
+    rb_team = defaultdict(float)
+    for r in rows:
+        if r["_pos"] == "RB":
+            rb_team[(r["_team"], r["_w"])] += num(r.get("carries")) + num(r.get("targets"))
     out = {}
     for g, wk in by.items():
         name, pos, team = meta[g]
         sn = S.snaps.get(g, {})
         idp = pos in IDP
         u = {"wk": weeks, "sn": [], "tg": [], "ca": [], "ts": []}
+        if pos == "RB":
+            u["bf"] = []
         for w in weeks:
             r = wk.get(w)
             snap = sn.get(w)
@@ -458,6 +465,9 @@ def usage_table(S: Season, upto_week: int, n: int = 4) -> dict:
                 u["tg"].append(int(num(r.get("targets"))) if r else None)
                 u["ca"].append(int(num(r.get("carries"))) if r else None)
                 u["ts"].append(round(num(r.get("target_share")), 3) if r and r.get("target_share") not in ("", "NA", None) else None)
+                if pos == "RB":
+                    tot = rb_team.get((r["_team"], w), 0) if r else 0
+                    u["bf"].append(round((num(r.get("carries")) + num(r.get("targets"))) / tot, 2) if r and tot else None)
         if idp:
             del u["tg"], u["ca"], u["ts"]
         if any(x is not None for x in u["sn"]) or any(x for x in u.get("tg", []) + u.get("ca", []) if x):

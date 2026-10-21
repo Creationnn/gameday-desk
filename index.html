@@ -429,6 +429,7 @@ function playerCell(id, opts={}){
   if(opts.trend && S.trendAdd[id]) chips += `<span class="chip acc">+${S.trendAdd[id].toLocaleString()} adds</span>`;
   const u = usageInfo(id);
   if(u && u.rising) chips += `<span class="chip good" title="Snap share is climbing">SNAPS ↑</span>`;
+  if(u && u.heat) chips += `<span class="chip ${u.heat.cls}" title="${esc(u.heat.title)}">${u.heat.label}</span>`;
   if(opts.po){ const po = playoffSOS(id); if(po && po.label) chips += `<span class="chip ${po.cls}" title="${esc(po.title)}">PO ${po.label}</span>`; }
   const sub = [p.pos, p.team, meta?.opp ? "vs "+meta.opp : ""].filter(Boolean).join(" · ");
   return `<div class="pl"><b>${esc(pName(id))}${chips}</b><span>${esc(sub)}${u ? `<span class="use" title="${esc(u.title)}">${u.html}</span>` : ""}</span></div>`;
@@ -491,7 +492,8 @@ function renderLineup(){
     <div class="grid2">
       <div class="card"><h2>Lineup moves</h2>${movesHtml}${warnHtml ? `<h3>Needs attention</h3>${warnHtml}`:""}</div>
       <div class="card"><h2>How this works</h2><p class="note">Each player's projection combines up to three sources: Sleeper, ESPN, and the Gameday model built from this season's stats and snap counts. Every source is rescored with ${esc(S.league.name)}'s exact rules, corrected for how far off it has run this season, and weighted by how accurate it has been (see the Accuracy tab). The small range under each number shows the lowest and highest source, and a move marked close call means the sources disagree by more than the gain. Players listed Out, on IR, suspended, or on bye count as zero.</p>
-        <p class="note">Under each name: last week's snap share, <b>target share</b> (with the recent average), targets and carries. Target share is colored by what it's historically worth: <span class="ts good">green</span> is starter level (WR 20%+, TE 15%+, RB 10%+), <span class="ts warn">yellow</span> is borderline (WR 15–20%, TE 10–15%, RB 5–10%), <span class="ts mut">gray</span> is bench level. Tap or hover a usage line to see each week.</p></div>
+        <p class="note">Under each name: last week's snap share, <b>target share</b> (with the recent average), targets and carries. Target share is colored by what it's historically worth: <span class="ts good">green</span> is starter level (WR 20%+, TE 15%+, RB 10%+), <span class="ts warn">yellow</span> is borderline (WR 15–20%, TE 10–15%, RB 5–10%), <span class="ts mut">gray</span> is bench level. Tap or hover a usage line to see each week.</p>
+        <p class="note"><b>Running backs</b> also show <b>weighted opportunities</b> (carries plus targets, with each target counted as 2.5 carries because it's worth about 2.5 times the points) and <b>backfield share</b> (his share of his team's RB carries and targets). Weighted opportunities predict RB scoring better than carries or touches: 22+ a game is RB1/RB2 territory, 14–22 is flex, under 14 is bench. A backfield share of 65%+ means a workhorse. <b>BOUNCE-BACK</b> marks a back scoring well below what his workload usually produces; <b>RUNNING HOT</b> marks one scoring well above it.</p></div>
     </div>
     <div class="card"><h2>Best lineup, week ${S.week}</h2><div class="tbl"><table>
       <thead><tr><th>Slot</th><th>Player</th><th class="n">Proj</th><th class="n">Avg · Last 3</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -669,6 +671,6 @@ if(["lineup","matchup","waivers","trade","standings","accuracy","draft"].include
 $("#user").value = store.get("gd.user", "creationnn");
 run(loadUser);
 </script>
-<script src="features.js?v=8084cf7"></script>
+<script src="features.js?v=rb1"></script>
 </body>
 </html>

@@ -27,15 +27,54 @@ function usageInfo(id){
   const rising = recent2.length===2 && prior2.length>=1 && last>=.5 && avg(recent2) >= avg(prior2) + .15;
   const parts = [];
   if(last!=null) parts.push(`Snaps ${pct(last)}${arrow}`);
+  let heat = null;
+  if(pos==="RB" && !idp){
+    // Weighted opportunities: a target is worth about 2.5 carries in PPR (1.48 vs 0.59 points in 2026).
+    const k = rbTargetWeight();
+    const wo = u.wk.map((_,i)=>u.ca[i]==null ? null : u.ca[i] + k*u.tg[i]);
+    const woLast = lastOf(wo), woAvg = avg(wo);
+    if(woLast!=null) parts.push(`<span class="ts ${woAvg>=22?"good":woAvg>=14?"warn":"mut"}">Wtd opps ${f1(woLast)}${wo.filter(x=>x!=null).length>1?` (avg ${f1(woAvg)})`:""}</span>`);
+    const bf = u.bf || [], bfLast = lastOf(bf), bfAvg = avg(bf);
+    if(bfLast!=null) parts.push(`<span class="ts ${bfAvg>=.65?"good":bfAvg>=.35?"warn":"mut"}">Backfield ${pct(bfLast)}${bf.filter(x=>x!=null).length>1?` (avg ${pct(bfAvg)})`:""}</span>`);
+    // Is he scoring more or less than that workload usually produces?
+    const h = pHistory(id), ppo = rbPointsPerOpp();
+    if(h.gp>=3 && woAvg>=8 && ppo){
+      const exp = woAvg*ppo, ratio = h.ppg/exp;
+      if(ratio < 0.8) heat = {cls:"good", label:"BOUNCE-BACK", title:`Scoring ${f1(h.ppg)} a game; his workload usually produces about ${f1(exp)}. Touchdowns and big plays tend to even out, so expect more.`};
+      else if(ratio > 1.25) heat = {cls:"warn", label:"RUNNING HOT", title:`Scoring ${f1(h.ppg)} a game; his workload usually produces about ${f1(exp)}. Some of that is likely touchdown luck.`};
+    }
+  }
   if(!idp){
     const ts = lastOf(u.ts), tsAvg = avg(u.ts), tg = lastOf(u.tg), ca = lastOf(u.ca);
-    if(pos!=="QB" && ts!=null) parts.push(`<span class="ts ${tsClass(pos, tsAvg ?? ts)}">Tgt share ${pct(ts)}${tsAvg!=null && u.ts.filter(x=>x!=null).length>1 ? ` (avg ${pct(tsAvg)})` : ""}</span>`);
-    if(pos!=="QB" && tg!=null) parts.push(`${tg} tgt`);
-    if(ca!=null && (pos==="RB" || pos==="QB" || ca>0)) parts.push(`${ca} car`);
+    const tsTxt = ts!=null ? `<span class="ts ${tsClass(pos, tsAvg ?? ts)}">Tgt share ${pct(ts)}${tsAvg!=null && u.ts.filter(x=>x!=null).length>1 ? ` (avg ${pct(tsAvg)})` : ""}</span>` : null;
+    if(pos==="RB"){
+      if(ca!=null) parts.push(`${ca} car`);
+      if(tg!=null) parts.push(`${tg} tgt`);
+      if(tsTxt) parts.push(tsTxt);
+    } else {
+      if(pos!=="QB" && tsTxt) parts.push(tsTxt);
+      if(pos!=="QB" && tg!=null) parts.push(`${tg} tgt`);
+      if(ca!=null && (pos==="QB" || ca>0)) parts.push(`${ca} car`);
+    }
   }
   if(!parts.length) return null;
   const title = u.wk.map((w,i)=>`Wk ${w}: ${u.sn[i]!=null ? pct(u.sn[i])+" snaps" : "did not play"}${!idp && u.tg[i]!=null ? `, ${u.ts[i]!=null ? pct(u.ts[i])+" tgt share, " : ""}${u.tg[i]} tgt, ${u.ca[i]} car` : ""}`).join("\n");
-  return {html: parts.join(" · "), title, rising, last};
+  return {html: parts.join(" · "), title, rising, last, heat};
+}
+function rbTargetWeight(){ const r = S.scoring?.rec ?? 1; return r>=1 ? 2.5 : r>=0.5 ? 2.0 : 1.5; }
+/* League-wide fantasy points per weighted opportunity for running backs, with this league's scoring. */
+function rbPointsPerOpp(){
+  if(S._ppo!==undefined) return S._ppo;
+  const k = rbTargetWeight(); let pts = 0, opp = 0;
+  for(const [id,u] of Object.entries(S.usage||{})){
+    if(S.players[id]?.pos!=="RB" || !u.ca) continue;
+    const h = pHistory(id); if(h.gp<3) continue;
+    const wo = u.wk.map((_,i)=>u.ca[i]==null ? null : u.ca[i]+k*u.tg[i]).filter(x=>x!=null);
+    if(wo.length<2) continue;
+    pts += h.ppg; opp += wo.reduce((a,b)=>a+b,0)/wo.length;
+  }
+  S._ppo = opp ? pts/opp : null;
+  return S._ppo;
 }
 
 /* ---------- schedule: byes and playoff strength ---------- */
@@ -191,7 +230,7 @@ document.addEventListener("click", e=>{
 });
 /* Clear cached ideas whenever the league reloads. */
 const _loadLeague = loadLeague;
-loadLeague = async function(){ S._ideas = null; rateCache = new Map(); await _loadLeague(); };
+loadLeague = async function(){ S._ideas = null; S._ppo = undefined; rateCache = new Map(); await _loadLeague(); };
 
 /* ---------- live game day ---------- */
 const ESPN_ABBR = {WSH:"WAS", JAC:"JAX", LA:"LAR"};
