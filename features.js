@@ -235,7 +235,8 @@ renderMatchup = function(){
   const a = liveTeam(mine), b = liveTeam(opp);
   const pre = winProb(mine, opp);
   const sd = Math.sqrt(a.varr + b.varr);
-  const win = !started ? pre : sd < 0.01 ? (a.pts>b.pts?1:a.pts<b.pts?0:0.5) : normCdf((a.total-b.total)/sd);
+  let win = !started ? pre : sd < 0.01 ? (a.pts>b.pts?1:a.pts<b.pts?0:0.5) : normCdf((a.total-b.total)/sd);
+  if(sd >= 0.01) win = Math.min(0.99, Math.max(0.01, win));  // never 0% or 100% while games are left
   const live = anyLive();
   const side = m => S.slots.map((slot,i)=>{
     const id = (m.starters||[])[i] || "0";
