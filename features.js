@@ -37,11 +37,11 @@ function usageInfo(id){
     const bf = u.bf || [], bfLast = lastOf(bf), bfAvg = avg(bf);
     if(bfLast!=null) parts.push(`<span class="ts ${bfAvg>=.65?"good":bfAvg>=.35?"warn":"mut"}">Backfield ${pct(bfLast)}${bf.filter(x=>x!=null).length>1?` (avg ${pct(bfAvg)})`:""}</span>`);
     // Is he scoring more or less than that workload usually produces?
-    const h = pHistory(id), ppo = rbPointsPerOpp();
-    if(h.gp>=3 && woAvg>=8 && ppo){
-      const exp = woAvg*ppo, ratio = h.ppg/exp;
-      if(ratio < 0.8) heat = {cls:"good", label:"BOUNCE-BACK", title:`Scoring ${f1(h.ppg)} a game; his workload usually produces about ${f1(exp)}. Touchdowns and big plays tend to even out, so expect more.`};
-      else if(ratio > 1.25) heat = {cls:"warn", label:"RUNNING HOT", title:`Scoring ${f1(h.ppg)} a game; his workload usually produces about ${f1(exp)}. Some of that is likely touchdown luck.`};
+    const m = rbMatched(id, u), ppo = rbPointsPerOpp();
+    if(m && m.games>=3 && m.wo>=10 && ppo){
+      const exp = m.wo*ppo, ratio = m.ppg/exp;
+      if(ratio < 0.75) heat = {cls:"good", label:"BOUNCE-BACK", title:`Over his last ${m.games} games he's scored ${f1(m.ppg)} a game; that workload usually produces about ${f1(exp)}. Touchdowns and big plays tend to even out, so expect more.`};
+      else if(ratio > 1.35) heat = {cls:"warn", label:"RUNNING HOT", title:`Over his last ${m.games} games he's scored ${f1(m.ppg)} a game; that workload usually produces about ${f1(exp)}. Part of that is likely touchdown luck or big plays.`};
     }
   }
   if(!idp){
@@ -62,16 +62,24 @@ function usageInfo(id){
   return {html: parts.join(" · "), title, rising, last, heat};
 }
 function rbTargetWeight(){ const r = S.scoring?.rec ?? 1; return r>=1 ? 2.5 : r>=0.5 ? 2.0 : 1.5; }
+/* Points and weighted opportunities over the same weeks (the usage window), games played only. */
+function rbMatched(id, u){
+  const k = rbTargetWeight(); let pts = 0, wo = 0, games = 0;
+  u.wk.forEach((w,i)=>{
+    const g = S.weekly?.[w]?.[id];
+    if(u.ca[i]==null || !g || !(g.gp>0)) return;
+    pts += g.pts; wo += u.ca[i] + k*u.tg[i]; games++;
+  });
+  return games ? {ppg: pts/games, wo: wo/games, games} : null;
+}
 /* League-wide fantasy points per weighted opportunity for running backs, with this league's scoring. */
 function rbPointsPerOpp(){
   if(S._ppo!==undefined) return S._ppo;
-  const k = rbTargetWeight(); let pts = 0, opp = 0;
+  let pts = 0, opp = 0;
   for(const [id,u] of Object.entries(S.usage||{})){
     if(S.players[id]?.pos!=="RB" || !u.ca) continue;
-    const h = pHistory(id); if(h.gp<3) continue;
-    const wo = u.wk.map((_,i)=>u.ca[i]==null ? null : u.ca[i]+k*u.tg[i]).filter(x=>x!=null);
-    if(wo.length<2) continue;
-    pts += h.ppg; opp += wo.reduce((a,b)=>a+b,0)/wo.length;
+    const m = rbMatched(id, u); if(!m || m.games<2) continue;
+    pts += m.ppg*m.games; opp += m.wo*m.games;
   }
   S._ppo = opp ? pts/opp : null;
   return S._ppo;
