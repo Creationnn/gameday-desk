@@ -1,0 +1,67 @@
+name: Yahoo
+
+on:
+  workflow_dispatch:
+    inputs:
+      code:
+        description: "Yahoo authorization code (leave blank to just refresh league data)"
+        required: false
+  schedule:
+    - cron: "47 */6 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  yahoo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      YAHOO_CLIENT_ID: ${{ secrets.YAHOO_CLIENT_ID }}
+      YAHOO_CLIENT_SECRET: ${{ secrets.YAHOO_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check setup
+        id: setup
+        run: |
+          if [ -z "$YAHOO_CLIENT_ID" ] || [ -z "$YAHOO_CLIENT_SECRET" ]; then
+            echo "Yahoo secrets are not set yet; skipping."; echo "ready=false" >> "$GITHUB_OUTPUT"
+          else echo "ready=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Exchange authorization code
+        if: steps.setup.outputs.ready == 'true' && github.event.inputs.code != ''
+        env:
+          CODE: ${{ github.event.inputs.code }}
+        run: |
+          echo "::add-mask::$CODE"
+          python collector/yahoo.py exchange "$CODE"
+      - name: Decrypt saved token
+        if: steps.setup.outputs.ready == 'true' && github.event.inputs.code == ''
+        run: |
+          if [ ! -f data/yahoo_token.enc ]; then echo "Not authorized yet; run this workflow with a code."; exit 0; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -in data/yahoo_token.enc -out yahoo_token.json -pass env:YAHOO_CLIENT_SECRET
+      - name: Fetch leagues
+        if: steps.setup.outputs.ready == 'true'
+        run: |
+          if [ -f yahoo_token.json ]; then python collector/yahoo.py fetch; fi
+      - name: Encrypt token and commit
+        if: steps.setup.outputs.ready == 'true'
+        run: |
+          if [ -f yahoo_token.json ]; then
+            openssl enc -aes-256-cbc -pbkdf2 -salt -in yahoo_token.json -out data/yahoo_token.enc -pass env:YAHOO_CLIENT_SECRET
+            rm -f yahoo_token.json
+          fi
+          git config user.name "gameday-desk-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if ! git diff --cached --quiet; then
+            git commit -m "Update Yahoo data $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git pull --rebase --quiet origin main
+            git push
+          fi
