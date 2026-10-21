@@ -72,6 +72,9 @@ tr.hi td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
 .moves .dn{color:var(--muted)}
 .moves .gain{margin-left:auto;font:600 13px var(--mono);color:var(--good)}
 .note{font-size:13px;color:var(--muted);max-width:70ch}
+.rng{display:block;font:11px/1.2 var(--mono);color:var(--muted)}
+.srcline{font-size:13px;color:var(--muted)}
+.srcline b{color:var(--ink);font-weight:600}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips button{padding:4px 10px;font:600 13px var(--mono)}
 .chips button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -125,6 +128,8 @@ tr.hi td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
 "use strict";
 /* ---------- config ---------- */
 const API = "https://api.sleeper.app";
+const CONSENSUS_URLS = ["data/latest.json", "https://raw.githubusercontent.com/Creationnn/gameday-desk/main/data/latest.json"];
+const SOURCE_NAMES = {sleeper:"Sleeper", espn:"ESPN", model:"Gameday model"};
 const SLOT_ELIG = {
   QB:["QB"], RB:["RB"], WR:["WR"], TE:["TE"], K:["K"], DEF:["DEF"],
   FLEX:["RB","WR","TE"], WRRB_FLEX:["WR","RB"], REC_FLEX:["WR","TE"], SUPER_FLEX:["QB","RB","WR","TE"],
@@ -188,7 +193,7 @@ function normCdf(z){ // Abramowitz–Stegun approximation
 }
 
 /* ---------- state ---------- */
-const S = { players:{}, proj:{}, projMeta:{}, weekly:{}, trendAdd:{}, trendDrop:{}, tab: "lineup", wpos: "ALL", wsort: "fit", tradeTeam: null, give:new Set(), get:new Set() };
+const S = { players:{}, proj:{}, projMeta:{}, srcPts:{}, cons:null, weekly:{}, trendAdd:{}, trendDrop:{}, tab: "lineup", wpos: "ALL", wsort: "fit", tradeTeam: null, give:new Set(), get:new Set() };
 
 function addPlayer(id, p, team){
   if(!p) return;
@@ -256,7 +261,8 @@ async function loadLeague(){
   const posQ = basePos.map(p=>"position[]="+encodeURIComponent(p)).join("&");
   const doneWeeks = Array.from({length: Math.max(0, Math.min(week-1, 18))}, (_,i)=>i+1);
 
-  const [rosters, users, matchups, projArr, trendAdd, trendDrop, ...statArrs] = await Promise.all([
+  const [cons, rosters, users, matchups, projArr, trendAdd, trendDrop, ...statArrs] = await Promise.all([
+    loadConsensus(),
     api(`/v1/league/${lid}/rosters`),
     api(`/v1/league/${lid}/users`),
     api(`/v1/league/${lid}/matchups/${week}`).catch(()=>[]),
@@ -282,6 +288,17 @@ async function loadLeague(){
     addPlayer(e.player_id, e.player, e.team);
     S.proj[e.player_id] = scorePts(e.stats, scoring);
     S.projMeta[e.player_id] = {opp: e.opponent, date: e.date};
+  }
+  S.srcPts = {}; S.cons = (cons && String(cons.season)===String(S.season) && +cons.week===week) ? cons : null;
+  if(S.cons){
+    for(const [id, rec] of Object.entries(S.cons.players)){
+      if(!S.players[id]) addPlayer(id, {first_name: rec.n, last_name: "", position: rec.pos, team: rec.team});
+      const pts = {};
+      for(const [src, st] of Object.entries(rec.src)) pts[src] = scorePts(st, scoring);
+      S.srcPts[id] = pts;
+      const v = Object.values(pts);
+      if(v.length) S.proj[id] = Math.round(v.reduce((a,b)=>a+b,0)/v.length*100)/100;
+    }
   }
   S.trendAdd = Object.fromEntries((trendAdd||[]).map(t=>[t.player_id,t.count]));
   S.trendDrop = Object.fromEntries((trendDrop||[]).map(t=>[t.player_id,t.count]));
@@ -314,9 +331,45 @@ async function loadLeague(){
   S.give.clear(); S.get.clear();
 
   $("#leagueTag").textContent = `${league.name.toUpperCase()} · WK ${week}`;
-  setStatus(Object.keys(S.proj).length ? "" : `Sleeper has no projections for week ${week} yet, so lineup advice uses season averages only.`);
+  setStatus(Object.keys(S.proj).length ? "" : `No projections for week ${week} yet, so lineup advice uses season averages only.`);
+  renderSources();
   $("#strip").hidden = false; $("#tabs").hidden = false;
   renderAll();
+}
+
+async function loadConsensus(){
+  for(const u of CONSENSUS_URLS){
+    try{ const r = await fetch(u + (u.includes("?")?"&":"?") + "t=" + Date.now(), {cache:"no-store"}); if(r.ok) return await r.json(); }catch{}
+  }
+  return null;
+}
+/* Low / high across sources and how many sources projected the player. */
+function range(id){
+  const v = Object.values(S.srcPts[id] || {});
+  if(!v.length) return null;
+  return {lo: Math.min(...v), hi: Math.max(...v), n: v.length};
+}
+function projCell(id){
+  if(!id || id==="0") return `<td class="n">–</td>`;
+  const r = range(id), v = weekVal(id);
+  const sub = r && r.n>1 && v>0 ? `<span class="rng">${f1(r.lo)}–${f1(r.hi)} · ${r.n} src</span>` : (r && v>0 ? `<span class="rng">1 src</span>` : "");
+  const title = S.srcPts[id] ? Object.entries(S.srcPts[id]).map(([k,x])=>`${SOURCE_NAMES[k]||k}: ${f1(x)}`).join("\n") : "";
+  return `<td class="n" title="${esc(title)}">${f1(v)}${sub}</td>`;
+}
+/* A move is a close call when the gain is small next to how much the sources disagree. */
+function closeCall(inId, outId){
+  const a = range(inId), b = outId && outId!=="0" ? range(outId) : null;
+  if(!a || !b) return false;
+  const spread = ((a.hi-a.lo) + (b.hi-b.lo))/2;
+  return (weekVal(inId) - weekVal(outId)) < Math.max(1.5, spread*0.5);
+}
+function renderSources(){
+  let el = $("#srcline");
+  if(!el){ el = document.createElement("div"); el.id="srcline"; el.className="srcline"; $("#strip").before(el); }
+  if(!S.cons){ el.innerHTML = `Projections: <b>Sleeper only</b>. The combined projections file wasn't available for week ${S.week}.`; return; }
+  const ago = Math.max(0, Math.round((Date.now() - Date.parse(S.cons.generated))/36e5));
+  const names = Object.entries(S.cons.sources).filter(([,v])=>v.players>0).map(([k,v])=>`${SOURCE_NAMES[k]||v.name} (${v.players})`);
+  el.innerHTML = `Consensus of <b>${esc(names.join(", "))}</b> · updated ${ago<1?"under an hour":ago+" hour"+(ago>1?"s":"")} ago`;
 }
 
 /* ---------- rendering ---------- */
@@ -359,7 +412,7 @@ function renderLineup(){
   const warnings = cur.map((id,i)=>({id,slot:S.slots[i]})).filter(({id})=> id==="0" || unavailable(id));
 
   const movesHtml = moves.length
-    ? `<ul class="moves">${moves.map(m=>`<li><span class="up">Start ${esc(pName(m.id))}</span><span class="dn">${m.out && m.out!=="0" ? "bench "+esc(pName(m.out)) : "into an empty slot"}</span><span class="gain">+${f1(m.gain)}</span></li>`).join("")}</ul>`
+    ? `<ul class="moves">${moves.map(m=>`<li><span class="up">Start ${esc(pName(m.id))}</span><span class="dn">${m.out && m.out!=="0" ? "bench "+esc(pName(m.out)) : "into an empty slot"}</span><span class="gain">${closeCall(m.id,m.out)?`<span class="chip warn">CLOSE CALL</span> `:""}+${f1(m.gain)}</span></li>`).join("")}</ul>`
     : `<p class="note">Your current lineup is the highest-projected one you can set. Nothing to change.</p>`;
   const warnHtml = warnings.length
     ? `<ul class="moves">${warnings.map(w=>`<li><span class="slot">${esc(w.slot)}</span>${w.id==="0" ? "<b>Empty starting slot</b>" : `<b>${esc(pName(w.id))}</b><span class="dn">${S.players[w.id]?.inj ? esc(S.players[w.id].inj) : "on bye or not projected"}</span>`}</li>`).join("")}</ul>` : "";
@@ -367,16 +420,16 @@ function renderLineup(){
   const rows = S.slots.map((slot,i)=>{
     const c = cur[i], o = opt[i];
     const changed = !curSet.has(o) && o!=="0";
-    return `<tr class="${changed?"hi":""}"><td class="slot">${esc(slot)}</td><td>${playerCell(o)}</td><td class="n">${o!=="0"?f1(weekVal(o)):"–"}</td><td class="n">${o!=="0"?fmtHist(o):"–"}</td></tr>`;
+    return `<tr class="${changed?"hi":""}"><td class="slot">${esc(slot)}</td><td>${playerCell(o)}</td>${projCell(o)}<td class="n">${o!=="0"?fmtHist(o):"–"}</td></tr>`;
   }).join("");
   const bench = ids.filter(id=>!optSet.has(id)).sort((a,b)=>weekVal(b)-weekVal(a));
-  const benchRows = bench.map(id=>`<tr><td class="slot">${esc(S.players[id]?.pos||"")}</td><td>${playerCell(id)}</td><td class="n">${f1(weekVal(id))}</td><td class="n">${fmtHist(id)}</td></tr>`).join("");
+  const benchRows = bench.map(id=>`<tr><td class="slot">${esc(S.players[id]?.pos||"")}</td><td>${playerCell(id)}</td>${projCell(id)}<td class="n">${fmtHist(id)}</td></tr>`).join("");
   const ir = S.me.reserve.map(id=>`<tr><td class="slot">IR</td><td>${playerCell(id)}</td><td class="n">–</td><td class="n">${fmtHist(id)}</td></tr>`).join("");
 
   $("#p-lineup").innerHTML = `
     <div class="grid2">
       <div class="card"><h2>Lineup moves</h2>${movesHtml}${warnHtml ? `<h3>Needs attention</h3>${warnHtml}`:""}</div>
-      <div class="card"><h2>How this works</h2><p class="note">Projections come from Sleeper, rescored with The Gulag's exact scoring rules (including IDP stats). Players listed Out, on IR, suspended, or on bye count as zero. The best lineup fills the strictest slots first, then FLEX.</p></div>
+      <div class="card"><h2>How this works</h2><p class="note">Each player's projection is the average of up to three sources: Sleeper, ESPN, and the Gameday model built from this season's stats. Every source is rescored with ${esc(S.league.name)}'s exact rules, including IDP. The small range under each number shows the lowest and highest source, and a move marked close call means the sources disagree by more than the gain. Players listed Out, on IR, suspended, or on bye count as zero.</p></div>
     </div>
     <div class="card"><h2>Best lineup, week ${S.week}</h2><div class="tbl"><table>
       <thead><tr><th>Slot</th><th>Player</th><th class="n">Proj</th><th class="n">Avg · Last 3</th></tr></thead><tbody>${rows}</tbody></table></div>

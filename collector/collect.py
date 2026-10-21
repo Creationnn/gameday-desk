@@ -323,9 +323,15 @@ def build_model(weekly: list[dict], games: list[dict], season: str, week: int) -
         else:
             continue
         # Availability: if the player missed the team's most recent game(s), scale down.
-        recent_weeks = sorted({int(r["week"]) for r in rows if norm_team(r.get("team") or "") == team})[-3:]
-        played = sum(1 for g in games_list if int(g["week"]) in recent_weeks)
-        avail = (0.4 + 0.6 * played / len(recent_weeks)) if recent_weeks else 1.0
+        # Only recent absences matter: missed the team's last game -> 0.6, last two -> 0.35.
+        team_weeks = sorted({int(r["week"]) for r in rows if norm_team(r.get("team") or "") == team})
+        my_weeks = {int(g["week"]) for g in games_list}
+        missed = 0
+        for wk in reversed(team_weeks):
+            if wk in my_weeks:
+                break
+            missed += 1
+        avail = 1.0 if missed == 0 else 0.6 if missed == 1 else 0.35
         st = {k: v * avail for k, v in st.items()}
         st = clean(st)
         if st:
