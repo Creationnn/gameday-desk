@@ -323,7 +323,7 @@ def build_model(weekly: list[dict], games: list[dict], season: str, week: int) -
         else:
             continue
         # Availability: if the player missed the team's most recent game(s), scale down.
-        # Only recent absences matter: missed the team's last game -> 0.6, last two -> 0.35.
+        # Count how many of the team's latest games this player missed in a row.
         team_weeks = sorted({int(r["week"]) for r in rows if norm_team(r.get("team") or "") == team})
         my_weeks = {int(g["week"]) for g in games_list}
         missed = 0
@@ -331,11 +331,10 @@ def build_model(weekly: list[dict], games: list[dict], season: str, week: int) -
             if wk in my_weeks:
                 break
             missed += 1
-        avail = 1.0 if missed == 0 else 0.6 if missed == 1 else 0.35
-        st = {k: v * avail for k, v in st.items()}
         st = clean(st)
         if st:
-            out[gsis] = {"stats": st, "pos": pos, "team": team, "opp": opp[team], "name": last.get("player_display_name")}
+            out[gsis] = {"stats": st, "pos": pos, "team": team, "opp": opp[team], "name": last.get("player_display_name"),
+                         "missed": missed}
     return out
 
 
@@ -382,6 +381,10 @@ def main() -> int:
         sources["model"], missed = {}, 0
         for g, v in model.items():
             sid = matcher.find(v["name"] or "", v["pos"], v["team"], gsis=g)
+            # The model can't tell who is returning from injury. If a player missed the team's
+            # latest game, only include him when Sleeper or ESPN also expects him to play.
+            if sid and v["missed"] and not any(sources.get(x, {}).get(sid) for x in ("sleeper", "espn")):
+                continue
             if sid:
                 sources["model"][sid] = v["stats"]
             else:
