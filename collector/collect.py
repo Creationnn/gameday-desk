@@ -104,8 +104,11 @@ class Matcher:
     """Finds a Sleeper id from external ids first, then name + position, using team to break ties."""
 
     def __init__(self, players: dict):
+        self.players = players
         self.by_espn, self.by_gsis, self.by_name = {}, {}, defaultdict(list)
-        for pid, p in players.items():
+        # Sleeper sometimes keeps a stale duplicate record; let active, rostered records win id lookups.
+        live = lambda p: (bool(p.get("active")), bool(p.get("team")))  # noqa: E731
+        for pid, p in sorted(players.items(), key=lambda kv: live(kv[1])):
             if p.get("espn_id"):
                 self.by_espn[str(p["espn_id"])] = pid
             if p.get("gsis_id"):
@@ -120,28 +123,30 @@ class Matcher:
         self.via_name = 0
 
     def find(self, name: str, pos: str, team: str = "", espn: str = "", gsis: str = "") -> str | None:
-        if espn and espn in self.by_espn:
-            return self.by_espn[espn]
-        if gsis and gsis in self.by_gsis:
-            return self.by_gsis[gsis]
+        id_hit = (self.by_espn.get(espn) if espn else None) or (self.by_gsis.get(gsis) if gsis else None)
+        if id_hit:
+            rec = self.players.get(id_hit) or {}
+            if rec.get("active") and rec.get("team"):
+                return id_hit
         key = name_key(name)
-        cands = self.by_name.get((key, norm_pos(pos)), [])
-        if not cands:
-            # Sites disagree on positions (DE vs LB, S vs LB, FB vs RB): fall back to the name alone.
-            cands = [c for (k, _), lst in self.by_name_all.get(key, {}).items() for c in lst]
-            cands = [c for c in cands if team and c[1] == team] or []
-        if not cands:
-            return None
+        pos = norm_pos(pos)
+        # Every Sleeper record with this name, any position (sites disagree on DE vs LB, etc.).
+        allc = [(pid, t, act, ps) for (_, ps), lst in self.by_name_all.get(key, {}).items() for pid, t, act in lst]
         pick = None
-        if len(cands) == 1:
-            pick = cands[0][0]
-        else:
-            same = [c for c in cands if team and c[1] == team] or [c for c in cands if c[2]]
-            if len(same) == 1:
-                pick = same[0][0]
-        if pick:
+        for tier in (
+            [c for c in allc if team and c[1] == team and c[3] == pos],   # same team and position
+            [c for c in allc if team and c[1] == team],                    # same team
+            [c for c in allc if c[3] == pos and c[2] and c[1]],            # active, on a team, same position
+            [c for c in allc if c[3] == pos],                              # same position
+        ):
+            if len(tier) == 1:
+                pick = tier[0][0]
+                break
+            if len(tier) > 1:
+                break  # ambiguous: don't guess
+        if pick and pick != id_hit:
             self.via_name += 1
-        return pick
+        return pick or id_hit
 
 
 # ---------------------------------------------------------------- sleeper
