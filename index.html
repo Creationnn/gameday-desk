@@ -76,7 +76,8 @@ tr.hi td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
 .rng{display:block;font:11px/1.2 var(--mono);color:var(--muted)}
 .srcline{font-size:13px;color:var(--muted)}
 .srcline b{color:var(--ink);font-weight:600}
-.use{font-family:var(--mono);font-size:11px}
+.use{display:block;font-family:var(--mono);font-size:11px;margin-top:1px}
+.ts{font-weight:600}.ts.good{color:var(--good)}.ts.warn{color:var(--warn)}.ts.mut{color:var(--muted)}
 .use .u{color:var(--good)} .use .d{color:var(--bad)}
 .idea{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:6px;background:var(--soft)}
 .idea .top{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
@@ -428,7 +429,7 @@ function playerCell(id, opts={}){
   if(u && u.rising) chips += `<span class="chip good" title="Snap share is climbing">SNAPS ↑</span>`;
   if(opts.po){ const po = playoffSOS(id); if(po && po.label) chips += `<span class="chip ${po.cls}" title="${esc(po.title)}">PO ${po.label}</span>`; }
   const sub = [p.pos, p.team, meta?.opp ? "vs "+meta.opp : ""].filter(Boolean).join(" · ");
-  return `<div class="pl"><b>${esc(pName(id))}${chips}</b><span>${esc(sub)}${u ? ` · <span class="use" title="${esc(u.title)}">${esc(u.text)}</span>` : ""}</span></div>`;
+  return `<div class="pl"><b>${esc(pName(id))}${chips}</b><span>${esc(sub)}${u ? `<span class="use" title="${esc(u.title)}">${u.html}</span>` : ""}</span></div>`;
 }
 
 function renderStrip(){
@@ -487,7 +488,8 @@ function renderLineup(){
   $("#p-lineup").innerHTML = `
     <div class="grid2">
       <div class="card"><h2>Lineup moves</h2>${movesHtml}${warnHtml ? `<h3>Needs attention</h3>${warnHtml}`:""}</div>
-      <div class="card"><h2>How this works</h2><p class="note">Each player's projection combines up to three sources: Sleeper, ESPN, and the Gameday model built from this season's stats and snap counts. Every source is rescored with ${esc(S.league.name)}'s exact rules, corrected for how far off it has run this season, and weighted by how accurate it has been (see the Accuracy tab). The small range under each number shows the lowest and highest source, and a move marked close call means the sources disagree by more than the gain. Players listed Out, on IR, suspended, or on bye count as zero.</p></div>
+      <div class="card"><h2>How this works</h2><p class="note">Each player's projection combines up to three sources: Sleeper, ESPN, and the Gameday model built from this season's stats and snap counts. Every source is rescored with ${esc(S.league.name)}'s exact rules, corrected for how far off it has run this season, and weighted by how accurate it has been (see the Accuracy tab). The small range under each number shows the lowest and highest source, and a move marked close call means the sources disagree by more than the gain. Players listed Out, on IR, suspended, or on bye count as zero.</p>
+        <p class="note">Under each name: last week's snap share, <b>target share</b> (with the recent average), targets and carries. Target share is colored by what it's historically worth: <span class="ts good">green</span> is starter level (WR 20%+, TE 15%+, RB 10%+), <span class="ts warn">yellow</span> is borderline (WR 15–20%, TE 10–15%, RB 5–10%), <span class="ts mut">gray</span> is bench level. Tap or hover a usage line to see each week.</p></div>
     </div>
     <div class="card"><h2>Best lineup, week ${S.week}</h2><div class="tbl"><table>
       <thead><tr><th>Slot</th><th>Player</th><th class="n">Proj</th><th class="n">Avg · Last 3</th></tr></thead><tbody>${rows}</tbody></table></div>

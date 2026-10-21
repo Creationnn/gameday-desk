@@ -10,29 +10,32 @@ rate = function(id){ let v = rateCache.get(id); if(v===undefined){ v = _rateRaw(
 
 /* ---------- usage trends ---------- */
 const pct = x => Math.round(x*100) + "%";
+/* Target share bands from 2026 data (10-team PPR): green = starter level, yellow = borderline, gray = bench. */
+const TS_BANDS = {WR:[.20,.15], TE:[.15,.10], RB:[.10,.05], QB:[1,1]};
+function tsClass(pos, v){ const b = TS_BANDS[pos] || TS_BANDS.WR; return v>=b[0] ? "good" : v>=b[1] ? "warn" : "mut"; }
 function usageInfo(id){
   const u = S.usage?.[id]; if(!u) return null;
   const idp = !u.tg;
-  const sn = u.sn.map((v,i)=>({v, w:u.wk[i], i})).filter(x=>x.v!=null);
-  if(!sn.length) return null;
-  const last = sn[sn.length-1].v;
-  const earlier = sn.slice(0,-1).map(x=>x.v);
-  const eAvg = earlier.length ? earlier.reduce((a,b)=>a+b,0)/earlier.length : null;
-  const arrow = eAvg==null ? "" : last-eAvg >= .10 ? " ↑" : last-eAvg <= -.10 ? " ↓" : "";
-  const recent2 = sn.slice(-2).map(x=>x.v), prior2 = sn.slice(0,-2).map(x=>x.v);
-  const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
+  const p = S.players[id], pos = p?.pos;
+  const avg = a => { const v = a.filter(x=>x!=null); return v.length ? v.reduce((x,y)=>x+y,0)/v.length : null; };
+  const lastOf = a => { for(let i=a.length-1;i>=0;i--) if(a[i]!=null) return a[i]; return null; };
+  const sn = u.sn.filter(x=>x!=null);
+  const last = lastOf(u.sn);
+  const earlier = sn.length > 1 ? avg(sn.slice(0,-1)) : null;
+  const arrow = earlier==null || last==null ? "" : last-earlier >= .10 ? ` <span class="u">↑</span>` : last-earlier <= -.10 ? ` <span class="d">↓</span>` : "";
+  const recent2 = sn.slice(-2), prior2 = sn.slice(0,-2);
   const rising = recent2.length===2 && prior2.length>=1 && last>=.5 && avg(recent2) >= avg(prior2) + .15;
-  let text = `Snaps ${pct(last)}${arrow}`;
-  const p = S.players[id];
+  const parts = [];
+  if(last!=null) parts.push(`Snaps ${pct(last)}${arrow}`);
   if(!idp){
-    const li = u.wk.length-1 - [...u.tg].reverse().findIndex(v=>v!=null);
-    if(li>=0 && li<u.wk.length){
-      if(p?.pos==="RB") text += ` · ${u.ca[li]} car · ${u.tg[li]} tgt`;
-      else if(p?.pos!=="QB") text += ` · ${u.ts[li]!=null ? pct(u.ts[li])+" tgt share" : u.tg[li]+" tgt"}`;
-    }
+    const ts = lastOf(u.ts), tsAvg = avg(u.ts), tg = lastOf(u.tg), ca = lastOf(u.ca);
+    if(pos!=="QB" && ts!=null) parts.push(`<span class="ts ${tsClass(pos, tsAvg ?? ts)}">Tgt share ${pct(ts)}${tsAvg!=null && u.ts.filter(x=>x!=null).length>1 ? ` (avg ${pct(tsAvg)})` : ""}</span>`);
+    if(pos!=="QB" && tg!=null) parts.push(`${tg} tgt`);
+    if(ca!=null && (pos==="RB" || pos==="QB" || ca>0)) parts.push(`${ca} car`);
   }
-  const title = u.wk.map((w,i)=>`Wk ${w}: ${u.sn[i]!=null ? pct(u.sn[i])+" snaps" : "did not play"}${!idp && u.tg[i]!=null ? `, ${u.tg[i]} tgt, ${u.ca[i]} car` : ""}`).join("\n");
-  return {text, title, rising, last};
+  if(!parts.length) return null;
+  const title = u.wk.map((w,i)=>`Wk ${w}: ${u.sn[i]!=null ? pct(u.sn[i])+" snaps" : "did not play"}${!idp && u.tg[i]!=null ? `, ${u.ts[i]!=null ? pct(u.ts[i])+" tgt share, " : ""}${u.tg[i]} tgt, ${u.ca[i]} car` : ""}`).join("\n");
+  return {html: parts.join(" · "), title, rising, last};
 }
 
 /* ---------- schedule: byes and playoff strength ---------- */
