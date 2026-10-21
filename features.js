@@ -468,6 +468,7 @@ if(S.me){ renderAll(); }
 /* Tap a usage line to show the week-by-week breakdown (tooltips don't work on phones). */
 document.addEventListener("click", e=>{
   const u = e.target.closest(".use"); if(!u) return;
+  if(u.closest("label")) e.preventDefault();  // don't tick the trade checkbox
   const next = u.nextElementSibling;
   if(next && next.classList.contains("weekly")){ next.remove(); return; }
   const d = document.createElement("span");
