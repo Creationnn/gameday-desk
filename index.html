@@ -289,6 +289,7 @@ async function loadLeague(){
     S.proj[e.player_id] = scorePts(e.stats, scoring);
     S.projMeta[e.player_id] = {opp: e.opponent, date: e.date};
   }
+  S.playing = new Set((projArr||[]).filter(e=>e && e.opponent && e.team).flatMap(e=>[e.team, e.opponent]));
   S.srcPts = {}; S.cons = (cons && String(cons.season)===String(S.season) && +cons.week===week) ? cons : null;
   if(S.cons){
     for(const [id, rec] of Object.entries(S.cons.players)){
@@ -379,7 +380,8 @@ function playerCell(id, opts={}){
   const meta = S.projMeta[id];
   let chips = "";
   if(p.inj){ const cls = OUT_STATUSES.has(p.inj) ? "bad" : (p.inj==="Doubtful" ? "bad" : "warn"); chips += `<span class="chip ${cls}">${esc(p.inj==="Questionable"?"Q":p.inj==="Doubtful"?"D":p.inj.toUpperCase())}</span>`; }
-  if(!(id in S.proj) && Object.keys(S.proj).length) chips += `<span class="chip mut">BYE / NO PROJ</span>`;
+  if(p.team && S.playing && S.playing.size && !S.playing.has(p.team)) chips += `<span class="chip mut">BYE</span>`;
+  else if(!p.inj && Object.keys(S.proj).length && !weekVal(id)) chips += `<span class="chip mut">NO PROJ</span>`;
   if(opts.trend && S.trendAdd[id]) chips += `<span class="chip acc">+${S.trendAdd[id].toLocaleString()} adds</span>`;
   const sub = [p.pos, p.team, meta?.opp ? "vs "+meta.opp : ""].filter(Boolean).join(" · ");
   return `<div class="pl"><b>${esc(pName(id))}${chips}</b><span>${esc(sub)}</span></div>`;
@@ -407,8 +409,20 @@ function renderLineup(){
   const cur = S.me.starters;
   const curSet = new Set(cur), optSet = new Set(opt);
   const toStart = opt.filter(id=>id!=="0" && !curSet.has(id)).sort((a,b)=>weekVal(b)-weekVal(a));
-  const toBench = cur.filter(id=>!optSet.has(id)).sort((a,b)=>weekVal(a)-weekVal(b));
-  const moves = toStart.map((id,i)=>{ const out = toBench[i]; return {id, out, gain: weekVal(id) - (out && out!=="0" ? weekVal(out) : 0)}; });
+  // Pair each player coming in with a starter going out whose slot he can fill (same position first).
+  const openIdx = cur.map((id,i)=>i).filter(i=>cur[i]==="0" || !optSet.has(cur[i]));
+  const used = new Set();
+  const moves = toStart.map(id=>{
+    const pIn = S.players[id];
+    const free = openIdx.filter(i=>!used.has(i));
+    const fits = free.filter(i=>eligible(pIn, S.slots[i]));
+    const samePos = fits.filter(i=>cur[i]!=="0" && S.players[cur[i]]?.fpos.some(x=>pIn?.fpos.includes(x)));
+    const pool = samePos.length ? samePos : fits.length ? fits : free;
+    const i = pool.sort((a,b)=>(cur[a]==="0"?-1:weekVal(cur[a])) - (cur[b]==="0"?-1:weekVal(cur[b])))[0];
+    if(i!==undefined) used.add(i);
+    const out = i!==undefined ? cur[i] : null;
+    return {id, out, gain: weekVal(id) - (out && out!=="0" ? weekVal(out) : 0)};
+  });
   const warnings = cur.map((id,i)=>({id,slot:S.slots[i]})).filter(({id})=> id==="0" || unavailable(id));
 
   const movesHtml = moves.length

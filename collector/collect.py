@@ -114,6 +114,9 @@ class Matcher:
             nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}"
             if pos and nm.strip():
                 self.by_name[(name_key(nm), pos)].append((pid, p.get("team") or "", bool(p.get("active"))))
+        self.by_name_all = defaultdict(dict)
+        for (k, ps), lst in self.by_name.items():
+            self.by_name_all[k][(k, ps)] = lst
         self.via_name = 0
 
     def find(self, name: str, pos: str, team: str = "", espn: str = "", gsis: str = "") -> str | None:
@@ -121,7 +124,12 @@ class Matcher:
             return self.by_espn[espn]
         if gsis and gsis in self.by_gsis:
             return self.by_gsis[gsis]
-        cands = self.by_name.get((name_key(name), norm_pos(pos)), [])
+        key = name_key(name)
+        cands = self.by_name.get((key, norm_pos(pos)), [])
+        if not cands:
+            # Sites disagree on positions (DE vs LB, S vs LB, FB vs RB): fall back to the name alone.
+            cands = [c for (k, _), lst in self.by_name_all.get(key, {}).items() for c in lst]
+            cands = [c for c in cands if team and c[1] == team] or []
         if not cands:
             return None
         pick = None
