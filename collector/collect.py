@@ -24,8 +24,10 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import time
+import unicodedata
 import urllib.request
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -84,6 +86,56 @@ def norm_team(t: str) -> str:
     return TEAM_NORM.get(t, t)
 
 
+SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "v"}
+ESPN_POS = {1: "QB", 2: "RB", 3: "WR", 4: "TE"}
+ESPN_TEAM = {1: "ATL", 2: "BUF", 3: "CHI", 4: "CIN", 5: "CLE", 6: "DAL", 7: "DEN", 8: "DET", 9: "GB",
+             10: "TEN", 11: "IND", 12: "KC", 13: "LV", 14: "LAR", 15: "MIA", 16: "MIN", 17: "NE", 18: "NO",
+             19: "NYG", 20: "NYJ", 21: "PHI", 22: "ARI", 23: "PIT", 24: "LAC", 25: "SF", 26: "SEA", 27: "TB",
+             28: "WAS", 29: "CAR", 30: "JAX", 33: "BAL", 34: "HOU"}
+
+
+def name_key(name: str) -> str:
+    n = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
+    parts = [w for w in re.sub(r"[^a-z ]", "", n.replace("-", " ")).split() if w not in SUFFIXES]
+    return "".join(parts)
+
+
+class Matcher:
+    """Finds a Sleeper id from external ids first, then name + position, using team to break ties."""
+
+    def __init__(self, players: dict):
+        self.by_espn, self.by_gsis, self.by_name = {}, {}, defaultdict(list)
+        for pid, p in players.items():
+            if p.get("espn_id"):
+                self.by_espn[str(p["espn_id"])] = pid
+            if p.get("gsis_id"):
+                self.by_gsis[str(p["gsis_id"]).strip()] = pid
+            pos = norm_pos(p.get("position") or "")
+            nm = p.get("full_name") or f"{p.get('first_name', '')} {p.get('last_name', '')}"
+            if pos and nm.strip():
+                self.by_name[(name_key(nm), pos)].append((pid, p.get("team") or "", bool(p.get("active"))))
+        self.via_name = 0
+
+    def find(self, name: str, pos: str, team: str = "", espn: str = "", gsis: str = "") -> str | None:
+        if espn and espn in self.by_espn:
+            return self.by_espn[espn]
+        if gsis and gsis in self.by_gsis:
+            return self.by_gsis[gsis]
+        cands = self.by_name.get((name_key(name), norm_pos(pos)), [])
+        if not cands:
+            return None
+        pick = None
+        if len(cands) == 1:
+            pick = cands[0][0]
+        else:
+            same = [c for c in cands if team and c[1] == team] or [c for c in cands if c[2]]
+            if len(same) == 1:
+                pick = same[0][0]
+        if pick:
+            self.via_name += 1
+        return pick
+
+
 # ---------------------------------------------------------------- sleeper
 def sleeper_state() -> dict:
     return get_json("https://api.sleeper.app/v1/state/nfl")
@@ -117,7 +169,7 @@ ESPN_TO_SLEEPER = {
 }
 
 
-def espn_projections(season: str, week: int, espn_to_sleeper: dict) -> tuple[dict, int]:
+def espn_projections(season: str, week: int, matcher: "Matcher") -> tuple[dict, int]:
     """ESPN weekly projections for QB/RB/WR/TE, keyed by Sleeper id. Returns (projections, unmatched)."""
     flt = {"players": {
         "filterSlotIds": {"value": [0, 2, 4, 6]},
@@ -131,7 +183,8 @@ def espn_projections(season: str, week: int, espn_to_sleeper: dict) -> tuple[dic
     out, unmatched = {}, 0
     for entry in data.get("players", []):
         p = entry.get("player") or {}
-        sid = espn_to_sleeper.get(str(p.get("id")))
+        sid = matcher.find(p.get("fullName") or "", ESPN_POS.get(p.get("defaultPositionId"), ""),
+                           ESPN_TEAM.get(p.get("proTeamId"), ""), espn=str(p.get("id") or ""))
         proj = next((s for s in p.get("stats") or []
                      if s.get("statSourceId") == 1 and s.get("statSplitTypeId") == 1
                      and s.get("scoringPeriodId") == week), None)
@@ -291,14 +344,8 @@ def main() -> int:
     print(f"Collecting {season} week {week}")
 
     players = sleeper_players()
-    espn_to_sleeper, gsis_to_sleeper = {}, {}
-    for pid, p in players.items():
-        if p.get("espn_id"):
-            espn_to_sleeper[str(p["espn_id"])] = pid
-        if p.get("gsis_id"):
-            gsis_to_sleeper[str(p["gsis_id"]).strip()] = pid
-
-    sources, errors = {}, {}
+    matcher = Matcher(players)
+    sources, errors, diag = {}, {}, {}
 
     try:
         sources["sleeper"] = sleeper_projections(season, week)
@@ -307,18 +354,18 @@ def main() -> int:
 
     # nflverse ids bridge gsis <-> espn, which fills gaps in Sleeper's gsis coverage.
     try:
-        nv_players = get_csv(f"{NFLVERSE}/players/players.csv")
-        for r in nv_players:
+        for r in get_csv(f"{NFLVERSE}/players/players.csv"):
             g, e = (r.get("gsis_id") or "").strip(), (r.get("espn_id") or "").strip()
-            if g and e and g not in gsis_to_sleeper and e in espn_to_sleeper:
-                gsis_to_sleeper[g] = espn_to_sleeper[e]
+            if g and e and g not in matcher.by_gsis and e in matcher.by_espn:
+                matcher.by_gsis[g] = matcher.by_espn[e]
     except Exception as e:  # noqa: BLE001
         errors["nflverse_ids"] = str(e)
 
     try:
-        espn, unmatched = espn_projections(season, week, espn_to_sleeper)
+        espn, unmatched = espn_projections(season, week, matcher)
         sources["espn"] = espn
         print(f"espn: {len(espn)} players ({unmatched} unmatched)")
+        diag["espn_unmatched"] = unmatched
     except Exception as e:  # noqa: BLE001
         errors["espn"] = str(e)
 
@@ -326,13 +373,21 @@ def main() -> int:
         weekly = get_csv(f"{NFLVERSE}/stats_player/stats_player_week_{season}.csv")
         games = get_csv(f"{NFLVERSE}/schedules/games.csv")
         model = build_model(weekly, games, season, week)
-        sources["model"] = {gsis_to_sleeper[g]: v["stats"] for g, v in model.items() if g in gsis_to_sleeper}
-        print(f"model: {len(sources['model'])} players ({len(model) - len(sources['model'])} unmatched)")
+        sources["model"], missed = {}, 0
+        for g, v in model.items():
+            sid = matcher.find(v["name"] or "", v["pos"], v["team"], gsis=g)
+            if sid:
+                sources["model"][sid] = v["stats"]
+            else:
+                missed += 1
+        print(f"model: {len(sources['model'])} players ({missed} unmatched)")
+        diag["model_unmatched"] = missed
     except Exception as e:  # noqa: BLE001
         errors["model"] = str(e)
 
     for k, v in sources.items():
         print(f"{k}: {len(v)} players")
+    print(f"matched by name: {matcher.via_name}")
     for k, v in errors.items():
         print(f"ERROR {k}: {v}", file=sys.stderr)
     if not sources:
@@ -361,6 +416,7 @@ def main() -> int:
             "model": {"name": "Gameday model", "players": len(sources.get("model", {}))},
         },
         "errors": errors,
+        "diag": {**diag, "matched_by_name": matcher.via_name},
         "players": merged,
     }
     os.makedirs(os.path.join(OUT_DIR, "history"), exist_ok=True)
