@@ -76,6 +76,16 @@ tr.hi td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
 .rng{display:block;font:11px/1.2 var(--mono);color:var(--muted)}
 .srcline{font-size:13px;color:var(--muted)}
 .srcline b{color:var(--ink);font-weight:600}
+.use{font-family:var(--mono);font-size:11px}
+.use .u{color:var(--good)} .use .d{color:var(--bad)}
+.idea{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:6px;background:var(--soft)}
+.idea .top{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.idea .gain{margin-left:auto;font:600 13px var(--mono);color:var(--good)}
+.livebadge{font:600 11px var(--mono);color:var(--bad);letter-spacing:.06em}
+.gs{display:block;font:11px/1.2 var(--mono);color:var(--muted)}
+.taken td{opacity:.45}
+.tierbreak td{border-top:2px solid var(--line)}
+.mine td{background:color-mix(in srgb,var(--good) 10%,transparent)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chips button{padding:4px 10px;font:600 13px var(--mono)}
 .chips button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
@@ -117,12 +127,16 @@ tr.hi td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
     <button role="tab" data-tab="waivers">Waivers</button>
     <button role="tab" data-tab="trade">Trade check</button>
     <button role="tab" data-tab="standings">Standings</button>
+    <button role="tab" data-tab="accuracy">Accuracy</button>
+    <button role="tab" data-tab="draft">Draft</button>
   </nav>
   <section class="panel" id="p-lineup" hidden></section>
   <section class="panel" id="p-matchup" hidden></section>
   <section class="panel" id="p-waivers" hidden></section>
   <section class="panel" id="p-trade" hidden></section>
   <section class="panel" id="p-standings" hidden></section>
+  <section class="panel" id="p-accuracy" hidden></section>
+  <section class="panel" id="p-draft" hidden></section>
 </main></div>
 
 <script>
@@ -225,7 +239,8 @@ function rate(id){
   const p = S.players[id];
   if(p && (p.inj==="IR" || p.inj==="Sus" || p.inj==="PUP")) return (h.ppg||pr||0)*0.5;
   if(!h.gp) return pr || 0;
-  const projPart = (pr!=null ? pr : h.ppg);
+  const onBye = p && p.team && S.playing && S.playing.size && !S.playing.has(p.team);
+  const projPart = (pr!=null && !onBye ? pr : h.ppg);
   return 0.45*h.ppg + 0.25*(h.l3 ?? h.ppg) + 0.30*projPart;
 }
 
@@ -262,8 +277,10 @@ async function loadLeague(){
   const posQ = basePos.map(p=>"position[]="+encodeURIComponent(p)).join("&");
   const doneWeeks = Array.from({length: Math.max(0, Math.min(week-1, 18))}, (_,i)=>i+1);
 
-  const [cons, rosters, users, matchups, projArr, trendAdd, trendDrop, ...statArrs] = await Promise.all([
+  const [cons, usage, accuracy, rosters, users, matchups, projArr, trendAdd, trendDrop, ...statArrs] = await Promise.all([
     loadConsensus(),
+    loadData("usage.json"),
+    loadData("accuracy.json"),
     api(`/v1/league/${lid}/rosters`),
     api(`/v1/league/${lid}/users`),
     api(`/v1/league/${lid}/matchups/${week}`).catch(()=>[]),
@@ -295,13 +312,21 @@ async function loadLeague(){
   if(S.cons){
     for(const [id, rec] of Object.entries(S.cons.players)){
       if(!S.players[id]) addPlayer(id, {first_name: rec.n, last_name: "", position: rec.pos, team: rec.team});
+      // Each source is corrected for its measured bias, then weighted by its graded accuracy.
+      const W = S.cons.weights?.[rec.pos] || {}, C = S.cons.calib?.[rec.pos] || {};
       const pts = {};
-      for(const [src, st] of Object.entries(rec.src)) pts[src] = scorePts(st, scoring);
+      let num = 0, den = 0;
+      for(const [src, st] of Object.entries(rec.src)){
+        const v = scorePts(st, scoring) * (C[src] || 1);
+        pts[src] = v;
+        const w = W[src] ?? 1; num += w*v; den += w;
+      }
       S.srcPts[id] = pts;
-      const v = Object.values(pts);
-      if(v.length) S.proj[id] = Math.round(v.reduce((a,b)=>a+b,0)/v.length*100)/100;
+      if(den) S.proj[id] = Math.round(num/den*100)/100;
     }
   }
+  S.usage = (usage && String(usage.season)===String(S.season)) ? usage.players : {};
+  S.accuracy = accuracy;
   S.trendAdd = Object.fromEntries((trendAdd||[]).map(t=>[t.player_id,t.count]));
   S.trendDrop = Object.fromEntries((trendDrop||[]).map(t=>[t.player_id,t.count]));
 
@@ -339,6 +364,12 @@ async function loadLeague(){
   renderAll();
 }
 
+async function loadData(file){
+  for(const base of ["data/", "https://raw.githubusercontent.com/Creationnn/gameday-desk/main/data/"]){
+    try{ const r = await fetch(base + file + "?t=" + Date.now(), {cache:"no-store"}); if(r.ok) return await r.json(); }catch{}
+  }
+  return null;
+}
 async function loadConsensus(){
   for(const u of CONSENSUS_URLS){
     try{ const r = await fetch(u + (u.includes("?")?"&":"?") + "t=" + Date.now(), {cache:"no-store"}); if(r.ok) return await r.json(); }catch{}
@@ -384,8 +415,11 @@ function playerCell(id, opts={}){
   if(p.team && S.playing && S.playing.size && !S.playing.has(p.team)) chips += `<span class="chip mut">BYE</span>`;
   else if(!p.inj && Object.keys(S.proj).length && !weekVal(id)) chips += `<span class="chip mut">NO PROJ</span>`;
   if(opts.trend && S.trendAdd[id]) chips += `<span class="chip acc">+${S.trendAdd[id].toLocaleString()} adds</span>`;
+  const u = usageInfo(id);
+  if(u && u.rising) chips += `<span class="chip good" title="Snap share is climbing">SNAPS ↑</span>`;
+  if(opts.po){ const po = playoffSOS(id); if(po && po.label) chips += `<span class="chip ${po.cls}" title="${esc(po.title)}">PO ${po.label}</span>`; }
   const sub = [p.pos, p.team, meta?.opp ? "vs "+meta.opp : ""].filter(Boolean).join(" · ");
-  return `<div class="pl"><b>${esc(pName(id))}${chips}</b><span>${esc(sub)}</span></div>`;
+  return `<div class="pl"><b>${esc(pName(id))}${chips}</b><span>${esc(sub)}${u ? ` · <span class="use" title="${esc(u.title)}">${esc(u.text)}</span>` : ""}</span></div>`;
 }
 
 function renderStrip(){
@@ -435,16 +469,16 @@ function renderLineup(){
   const rows = S.slots.map((slot,i)=>{
     const c = cur[i], o = opt[i];
     const changed = !curSet.has(o) && o!=="0";
-    return `<tr class="${changed?"hi":""}"><td class="slot">${esc(slot)}</td><td>${playerCell(o)}</td>${projCell(o)}<td class="n">${o!=="0"?fmtHist(o):"–"}</td></tr>`;
+    return `<tr class="${changed?"hi":""}"><td class="slot">${esc(slot)}</td><td>${playerCell(o,{po:true})}</td>${projCell(o)}<td class="n">${o!=="0"?fmtHist(o):"–"}</td></tr>`;
   }).join("");
   const bench = ids.filter(id=>!optSet.has(id)).sort((a,b)=>weekVal(b)-weekVal(a));
-  const benchRows = bench.map(id=>`<tr><td class="slot">${esc(S.players[id]?.pos||"")}</td><td>${playerCell(id)}</td>${projCell(id)}<td class="n">${fmtHist(id)}</td></tr>`).join("");
+  const benchRows = bench.map(id=>`<tr><td class="slot">${esc(S.players[id]?.pos||"")}</td><td>${playerCell(id,{po:true})}</td>${projCell(id)}<td class="n">${fmtHist(id)}</td></tr>`).join("");
   const ir = S.me.reserve.map(id=>`<tr><td class="slot">IR</td><td>${playerCell(id)}</td><td class="n">–</td><td class="n">${fmtHist(id)}</td></tr>`).join("");
 
   $("#p-lineup").innerHTML = `
     <div class="grid2">
       <div class="card"><h2>Lineup moves</h2>${movesHtml}${warnHtml ? `<h3>Needs attention</h3>${warnHtml}`:""}</div>
-      <div class="card"><h2>How this works</h2><p class="note">Each player's projection is the average of up to three sources: Sleeper, ESPN, and the Gameday model built from this season's stats. Every source is rescored with ${esc(S.league.name)}'s exact rules, including IDP. The small range under each number shows the lowest and highest source, and a move marked close call means the sources disagree by more than the gain. Players listed Out, on IR, suspended, or on bye count as zero.</p></div>
+      <div class="card"><h2>How this works</h2><p class="note">Each player's projection combines up to three sources: Sleeper, ESPN, and the Gameday model built from this season's stats and snap counts. Every source is rescored with ${esc(S.league.name)}'s exact rules, corrected for how far off it has run this season, and weighted by how accurate it has been (see the Accuracy tab). The small range under each number shows the lowest and highest source, and a move marked close call means the sources disagree by more than the gain. Players listed Out, on IR, suspended, or on bye count as zero.</p></div>
     </div>
     <div class="card"><h2>Best lineup, week ${S.week}</h2><div class="tbl"><table>
       <thead><tr><th>Slot</th><th>Player</th><th class="n">Proj</th><th class="n">Avg · Last 3</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -514,7 +548,7 @@ function renderWaivers(){
     const w = weakest(p.fpos[0]);
     const edge = w ? rate(id)-rate(w) : null;
     const swap = w && edge>0.5 ? `<span class="chip good">+${f1(edge)}/wk</span> over ${esc(pName(w))}` : `<span class="note">—</span>`;
-    return `<tr><td>${playerCell(id,{trend:true})}</td><td class="n">${f1(S.proj[id]||0)}</td><td class="n">${h.gp?f1(h.ppg):"–"}</td><td class="n">${h.gp?f1(h.l3):"–"}</td><td class="n">${f1(rate(id))}</td><td>${swap}</td></tr>`;
+    return `<tr><td>${playerCell(id,{trend:true,po:true})}</td><td class="n">${f1(S.proj[id]||0)}</td><td class="n">${h.gp?f1(h.ppg):"–"}</td><td class="n">${h.gp?f1(h.l3):"–"}</td><td class="n">${f1(rate(id))}</td><td>${swap}</td></tr>`;
   }).join("");
   const chip = (v,l)=>`<button type="button" data-wpos="${v}" aria-pressed="${S.wpos===v}">${l}</button>`;
   $("#p-waivers").innerHTML = `
@@ -585,13 +619,15 @@ function renderStandings(){
 }
 
 function renderAll(){
-  renderStrip(); renderLineup(); renderMatchup(); renderWaivers(); renderTrade(); renderStandings(); showTab(S.tab);
+  renderStrip(); renderLineup(); renderMatchup(); renderWaivers(); renderTrade(); renderStandings();
+  renderAccuracy(); renderDraftShell(); showTab(S.tab);
 }
 function showTab(t){
   S.tab = t;
   document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", String(b.dataset.tab===t)));
   document.querySelectorAll("section.panel").forEach(p=>p.hidden = p.id!=="p-"+t);
   try{ history.replaceState(null,"","#"+t); }catch{}
+  onTabShown(t);
 }
 
 /* ---------- events ---------- */
@@ -616,9 +652,10 @@ document.addEventListener("change", e=>{
 
 /* ---------- boot ---------- */
 const hashTab = (location.hash||"").slice(1);
-if(["lineup","matchup","waivers","trade","standings"].includes(hashTab)) S.tab = hashTab;
+if(["lineup","matchup","waivers","trade","standings","accuracy","draft"].includes(hashTab)) S.tab = hashTab;
 $("#user").value = store.get("gd.user", "creationnn");
 run(loadUser);
 </script>
+<script src="features.js"></script>
 </body>
 </html>
