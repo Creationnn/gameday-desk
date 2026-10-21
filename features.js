@@ -464,3 +464,14 @@ function onTabShown(t){
 }
 /* The core rendered before this file loaded; render the new pieces once data is in. */
 if(S.me){ renderAll(); }
+
+/* Tap a usage line to show the week-by-week breakdown (tooltips don't work on phones). */
+document.addEventListener("click", e=>{
+  const u = e.target.closest(".use"); if(!u) return;
+  const next = u.nextElementSibling;
+  if(next && next.classList.contains("weekly")){ next.remove(); return; }
+  const d = document.createElement("span");
+  d.className = "weekly";
+  d.textContent = u.getAttribute("title") || "";
+  u.after(d);
+});
