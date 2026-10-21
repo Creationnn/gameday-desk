@@ -1,0 +1,54 @@
+name: Game day check
+
+on:
+  schedule:
+    # Sunday ~11:10am Eastern while daylight time lasts, ~10:10am after it ends (15:10 UTC).
+    - cron: "10 15 * * 0"
+  workflow_dispatch:
+    inputs:
+      notify:
+        description: "Post the notification issue"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Refresh projections
+        run: python collector/collect.py
+      - name: Build report
+        run: python collector/report.py
+      - name: Commit data
+        run: |
+          git config user.name "gameday-desk-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if ! git diff --cached --quiet; then
+            git commit -m "Game day data $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git pull --rebase --quiet origin main
+            git push
+          fi
+      - name: Notify
+        if: github.event_name == 'schedule' || github.event.inputs.notify == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create gameday --color D9480F --description "Game day check" --force -R "$GITHUB_REPOSITORY"
+          for n in $(gh issue list -R "$GITHUB_REPOSITORY" --label gameday --state open --json number --jq '.[].number'); do
+            gh issue close "$n" -R "$GITHUB_REPOSITORY"
+          done
+          gh issue create -R "$GITHUB_REPOSITORY" --label gameday --title "$(cat report_title.txt)" --body-file report.md
