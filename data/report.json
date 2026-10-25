@@ -1,17 +1,17 @@
 {
- "generated": "2026-10-21T13:10:36+00:00",
+ "generated": "2026-10-25T15:36:44+00:00",
  "season": "2026",
  "week": 7,
  "league": "The Gulag",
- "projected": 136.3,
- "best": 136.3,
+ "projected": 134.3,
+ "best": 134.3,
  "issues": [],
  "moves": [],
  "pickups": [],
  "matchup": {
   "opponent": "earthypisces",
-  "you": 136.3,
-  "them": 100.8,
-  "win": 0.91
+  "you": 134.3,
+  "them": 137.2,
+  "win": 0.46
  }
 }
