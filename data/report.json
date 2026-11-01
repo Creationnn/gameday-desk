@@ -1,17 +1,23 @@
 {
- "generated": "2026-10-25T15:36:44+00:00",
+ "generated": "2026-11-01T15:39:43+00:00",
  "season": "2026",
- "week": 7,
+ "week": 8,
  "league": "The Gulag",
- "projected": 134.3,
- "best": 134.3,
+ "projected": 134.2,
+ "best": 137.9,
  "issues": [],
- "moves": [],
+ "moves": [
+  {
+   "start": "Tony Pollard",
+   "bench": "Omar Cooper Jr.",
+   "gain": 3.7
+  }
+ ],
  "pickups": [],
  "matchup": {
-  "opponent": "earthypisces",
-  "you": 134.3,
-  "them": 137.2,
-  "win": 0.46
+  "opponent": "SleeperMcgeepers",
+  "you": 134.2,
+  "them": 129.2,
+  "win": 0.57
  }
 }
