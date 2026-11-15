@@ -1,23 +1,69 @@
 {
- "generated": "2026-11-08T15:41:31+00:00",
+ "generated": "2026-11-15T15:44:57+00:00",
  "season": "2026",
- "week": 9,
+ "week": 10,
  "league": "The Gulag",
- "projected": 132.4,
- "best": 135.9,
- "issues": [],
+ "projected": 112.2,
+ "best": 120.6,
+ "issues": [
+  "**Omar Cooper Jr.** (WR) is listed **Questionable**. Check before kickoff.",
+  "**Colston Loveland** (TE) is on bye and will score 0.",
+  "**Tykee Smith** (DB) is on bye and will score 0."
+ ],
  "moves": [
   {
+   "start": "Jaylen Warren",
+   "bench": "Quinshon Judkins",
+   "gain": 5.2
+  },
+  {
    "start": "Nico Collins",
-   "bench": "Omar Cooper Jr.",
-   "gain": 3.4
+   "bench": "Quinshon Judkins",
+   "gain": 2.9
   }
  ],
- "pickups": [],
+ "pickups": [
+  {
+   "pos": "DB",
+   "name": "Amani Hooker",
+   "team": "BUF",
+   "proj": 10.3
+  },
+  {
+   "pos": "DB",
+   "name": "Kamari Lassiter",
+   "team": "HOU",
+   "proj": 9.0
+  },
+  {
+   "pos": "DB",
+   "name": "Corey Thornton",
+   "team": "CAR",
+   "proj": 8.4
+  },
+  {
+   "pos": "TE",
+   "name": "Kyle Pitts Sr.",
+   "team": "ATL",
+   "proj": 9.4
+  },
+  {
+   "pos": "TE",
+   "name": "Darren Waller",
+   "team": "CAR",
+   "proj": 9.2
+  },
+  {
+   "pos": "TE",
+   "name": "Pat Freiermuth",
+   "team": "PIT",
+   "proj": 9.0
+  }
+ ],
  "matchup": {
-  "opponent": "Team Goonstronaut",
-  "you": 132.4,
-  "them": 117.9,
-  "win": 0.7
+  "opponent": "TOM BRAZY",
+  "you": 112.2,
+  "them": 103.0,
+  "win": 0.64
  }
 }
