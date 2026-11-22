@@ -1,69 +1,92 @@
 {
- "generated": "2026-11-15T15:44:57+00:00",
+ "generated": "2026-11-22T15:51:04+00:00",
  "season": "2026",
- "week": 10,
+ "week": 11,
  "league": "The Gulag",
- "projected": 112.2,
- "best": 120.6,
+ "projected": 106.2,
+ "best": 141.7,
  "issues": [
-  "**Omar Cooper Jr.** (WR) is listed **Questionable**. Check before kickoff.",
-  "**Colston Loveland** (TE) is on bye and will score 0.",
-  "**Tykee Smith** (DB) is on bye and will score 0."
+  "**Quinshon Judkins** (RB) is on bye and will score 0.",
+  "**Omar Cooper Jr.** (WR) is OUT and will score 0.",
+  "**Elijah Ponder** (DL) is on bye and will score 0."
  ],
  "moves": [
   {
-   "start": "Jaylen Warren",
+   "start": "Tony Pollard",
    "bench": "Quinshon Judkins",
-   "gain": 5.2
+   "gain": 19.0
   },
   {
    "start": "Nico Collins",
+   "bench": "Omar Cooper Jr.",
+   "gain": 16.0
+  },
+  {
+   "start": "Jaylen Warren",
    "bench": "Quinshon Judkins",
-   "gain": 2.9
+   "gain": 15.5
   }
  ],
  "pickups": [
   {
-   "pos": "DB",
-   "name": "Amani Hooker",
-   "team": "BUF",
-   "proj": 10.3
+   "pos": "DL",
+   "name": "Carl Granderson",
+   "team": "NO",
+   "proj": 7.6
   },
   {
-   "pos": "DB",
-   "name": "Kamari Lassiter",
+   "pos": "DL",
+   "name": "Boye Mafe",
+   "team": "CIN",
+   "proj": 7.2
+  },
+  {
+   "pos": "DL",
+   "name": "Tuli Tuipulotu",
+   "team": "LAC",
+   "proj": 7.0
+  },
+  {
+   "pos": "RB",
+   "name": "J.K. Dobbins",
+   "team": "DEN",
+   "proj": 8.1
+  },
+  {
+   "pos": "RB",
+   "name": "Alvin Kamara",
+   "team": "NO",
+   "proj": 7.9
+  },
+  {
+   "pos": "RB",
+   "name": "Samaje Perine",
+   "team": "CIN",
+   "proj": 7.1
+  },
+  {
+   "pos": "WR",
+   "name": "Adonai Mitchell",
+   "team": "NYJ",
+   "proj": 11.0
+  },
+  {
+   "pos": "WR",
+   "name": "Caleb Douglas",
+   "team": "MIA",
+   "proj": 10.2
+  },
+  {
+   "pos": "WR",
+   "name": "Xavier Hutchinson",
    "team": "HOU",
-   "proj": 9.0
-  },
-  {
-   "pos": "DB",
-   "name": "Corey Thornton",
-   "team": "CAR",
-   "proj": 8.4
-  },
-  {
-   "pos": "TE",
-   "name": "Kyle Pitts Sr.",
-   "team": "ATL",
-   "proj": 9.4
-  },
-  {
-   "pos": "TE",
-   "name": "Darren Waller",
-   "team": "CAR",
-   "proj": 9.2
-  },
-  {
-   "pos": "TE",
-   "name": "Pat Freiermuth",
-   "team": "PIT",
-   "proj": 9.0
+   "proj": 9.5
   }
  ],
  "matchup": {
-  "opponent": "TOM BRAZY",
-  "you": 112.2,
-  "them": 103.0,
-  "win": 0.64
+  "opponent": "Back 2 Back",
+  "you": 106.2,
+  "them": 137.4,
+  "win": 0.13
  }
 }
